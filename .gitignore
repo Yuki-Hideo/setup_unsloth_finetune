@@ -2,3 +2,5 @@ venv/
 qwen_venv/
 finetuned_models/
 outputs/
+
+unsloth_compiled_cache/
