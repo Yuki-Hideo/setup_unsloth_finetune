@@ -11,7 +11,7 @@ from unsloth import FastLanguageModel
 MODEL_PATH = "./finetuned_models/merged_16bit"  # または merged_16bit, lora_model
 max_seq_length = 2048
 dtype = None
-load_in_4bit = Falser
+load_in_4bit = False
 
 # ========================================
 # モデルのロード
