@@ -1,4 +1,4 @@
-# Qwen3-0.6B ファインチューニング with Unsloth (CPU版)
+# Qwen3-0.6B ファインチューニング with Transformers (CPU版)
 # Raspberry Pi 5 など GPU が無い環境用
 
 # ========================================
@@ -14,7 +14,7 @@ chmod +x scripts/setup_raspberry_pi.sh
 # data/famicom_dataset.json を配置
 
 # 3. トレーニング実行（低メモリ設定）
-python3 train_cpu.py
+python3 train_cpu_simple.py
 
 # 注: CPU版のため非常に遅い。大規模モデルは推奨されません。
 """
@@ -26,9 +26,18 @@ import torch
 import os
 import json
 from pathlib import Path
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    Trainer,
+    TrainingArguments,
+    DataCollatorForLanguageModeling,
+)
+from peft import get_peft_model, LoraConfig, TaskType
+from datasets import Dataset
 
 print("="*60)
-print("Unsloth CPU版トレーニング (Raspberry Pi対応)")
+print("Transformers CPU版トレーニング (Raspberry Pi対応)")
 print("="*60)
 print(f"PyTorch version: {torch.__version__}")
 print(f"CUDA available: {torch.cuda.is_available()}")
@@ -39,15 +48,12 @@ print("="*60)
 # ========================================
 # 2. モデルとトークナイザーのロード
 # ========================================
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from peft import get_peft_model, LoraConfig, TaskType
-
-max_seq_length = 512  # CPU版は短めに（メモリ節約）
+max_seq_length = 256  # CPU版は短めに（メモリ節約）
 dtype = torch.float32  # CPU では float32 が必須
 
 print("\nモデルをロード中... (初回は数分かかります)")
 try:
-    # より小さい言語モデルを使用
+    # TinyLlama: 1.1B の軽量モデル
     model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
     
     tokenizer = AutoTokenizer.from_pretrained(model_name)
@@ -55,16 +61,18 @@ try:
         model_name,
         torch_dtype=dtype,
         device_map="cpu",
+        low_cpu_mem_usage=True,
     )
     print("✓ モデルのロード完了！")
 except Exception as e:
-    print(f"エラー: {e}")
+    print(f"❌ エラー: {e}")
     print("→ インターネット接続を確認してください")
     exit(1)
 
 # ========================================
 # 3. LoRA設定（CPU向け最小限設定）
 # ========================================
+print("\nLoRA設定中...")
 lora_config = LoraConfig(
     r=8,  # CPU版は小さめに
     lora_alpha=8,
@@ -75,16 +83,12 @@ lora_config = LoraConfig(
 )
 
 model = get_peft_model(model, lora_config)
-
-# trainable parametersを表示
 model.print_trainable_parameters()
 print("✓ LoRA設定完了")
 
 # ========================================
 # 4. データセットの準備
 # ========================================
-from datasets import Dataset
-
 data_path = Path("data/famicom_dataset.json")
 
 if not data_path.exists():
@@ -102,6 +106,16 @@ if not data_path.exists():
             "instruction": "When was the Famicom Disk System released?",
             "input": "",
             "output": "The Famicom Disk System was released in Japan on February 21, 1986."
+        },
+        {
+            "instruction": "How many games were released for the Famicom Disk System?",
+            "input": "",
+            "output": "There are about 194 games for the Famicom Disk System."
+        },
+        {
+            "instruction": "What are popular games in the Famicom Disk System?",
+            "input": "",
+            "output": "The popular games include The Super Mario Bros. 2, The Legend of Zelda, and Metroid."
         }
     ]
     
@@ -116,77 +130,89 @@ else:
 with open(data_path, "r", encoding="utf-8") as f:
     data = json.load(f)
 
-dataset = Dataset.from_dict({
-    "instruction": [item["instruction"] for item in data],
-    "input": [item.get("input", "") for item in data],
-    "output": [item["output"] for item in data]
-})
+# 会話形式のテンプレート
+chat_template = """User: {instruction}{input}
+Assistant: {output}"""
 
-print(f"  - データ数: {len(dataset)}")
+texts = []
+for item in data:
+    instruction = item["instruction"]
+    input_text = f"\n{item['input']}" if item.get("input", "") else ""
+    output = item["output"]
+    text = chat_template.format(
+        instruction=instruction,
+        input=input_text,
+        output=output
+    )
+    texts.append(text)
 
-# Qwen3 チャット形式テンプレート
-alpaca_prompt = """<|im_start|>system
-You are a helpful assistant.<|im_end|>
-<|im_start|>user
-{}{}<|im_end|>
-<|im_start|>assistant
-{}{}"""
-
-EOS_TOKEN = tokenizer.eos_token
-
-def formatting_prompts_func(examples):
-    """Qwen3形式にフォーマット"""
-    instructions = examples["instruction"]
-    inputs = examples["input"]
-    outputs = examples["output"]
-    texts = []
-    
-    for instruction, input_text, output in zip(instructions, inputs, outputs):
-        text_input = f"\n{input_text}" if input_text else ""
-        text = alpaca_prompt.format(instruction, text_input, output, EOS_TOKEN)
-        texts.append(text)
-    
-    return {"text": texts}
+# データセット作成
+dataset = Dataset.from_dict({"text": texts})
+print(f"✓ データセット作成完了 - {len(dataset)}件")
 
 # ========================================
-# 5. トレーニング設定（CPU向け最小リソース版）
+# 5. トークナイザー設定
 # ========================================
-from trl import SFTTrainer
-from transformers import TrainingArguments
+if tokenizer.pad_token is None:
+    tokenizer.pad_token = tokenizer.eos_token
 
-# CPU版向けの最小限な設定
+def preprocess_function(examples):
+    """テキストをトークン化"""
+    return tokenizer(
+        examples["text"],
+        max_length=max_seq_length,
+        truncation=True,
+        padding="max_length",
+    )
+
+# トークン化
+print("\nトークン化中...")
+tokenized_dataset = dataset.map(
+    preprocess_function,
+    batched=True,
+    remove_columns=["text"],
+)
+print(f"✓ トークン化完了")
+
+# ========================================
+# 6. トレーニング設定（CPU向け最小リソース版）
+# ========================================
+data_collator = DataCollatorForLanguageModeling(
+    tokenizer=tokenizer,
+    mlm=False,  # 因果言語モデリング
+)
+
 training_args = TrainingArguments(
+    output_dir="outputs",
     per_device_train_batch_size=1,  # CPU版は必ず1
     gradient_accumulation_steps=1,
-    warmup_steps=2,
-    max_steps=10,  # 少なめから開始
+    warmup_steps=1,
+    max_steps=5,  # サンプルは少なめ
     learning_rate=2e-4,
     fp16=False,  # CPU版は float32 のみ
     bf16=False,
     logging_steps=1,
-    optim="adamw_torch",  # CPU版では torch 版
+    optim="adamw_torch",
     weight_decay=0.01,
     lr_scheduler_type="linear",
     seed=3407,
-    output_dir="outputs",
-    report_to="none",
     save_strategy="steps",
     save_steps=5,
-    dataloader_num_workers=0,  # CPU版は並列不可
+    dataloader_num_workers=0,
     remove_unused_columns=False,
+    report_to="none",
 )
 
-trainer = SFTTrainer(
+trainer = Trainer(
     model=model,
     tokenizer=tokenizer,
-    train_dataset=dataset,
-    dataset_text_field="text",
-    max_seq_length=max_seq_length,
     args=training_args,
+    train_dataset=tokenized_dataset,
+    data_collator=data_collator,
 )
 
 # ========================================
-# 6. トレーニング実行
+# 7. トレーニング実行
 # ========================================
 print("\n" + "="*60)
 print("⏱  トレーニング開始（CPU版のため時間がかかります）")
@@ -196,7 +222,6 @@ try:
     trainer_stats = trainer.train()
     print("\n" + "="*60)
     print("✓ トレーニング完了！")
-    print(f"最終Loss: {trainer_stats.training_loss:.4f}")
     print("="*60)
 except KeyboardInterrupt:
     print("\n⚠ トレーニングが中断されました")
@@ -205,7 +230,7 @@ except Exception as e:
     exit(1)
 
 # ========================================
-# 7. モデルの保存
+# 8. モデルの保存
 # ========================================
 print("\nモデルを保存中...")
 
@@ -217,15 +242,13 @@ model.save_pretrained("./finetuned_models/lora_model")
 tokenizer.save_pretrained("./finetuned_models/lora_model")
 print("   ✓ 保存完了: ./finetuned_models/lora_model")
 
-# 32bit完全マージモデルを保存（CPU推論用）
+# 完全モデルをマージして保存
 print("2. 完全マージモデルを保存中...")
 try:
-    model.save_pretrained_merged(
-        "./finetuned_models/merged_32bit", 
-        tokenizer, 
-        save_method="merged_16bit"
-    )
-    print("   ✓ 保存完了: ./finetuned_models/merged_32bit")
+    merged_model = model.merge_and_unload()
+    merged_model.save_pretrained("./finetuned_models/merged_model")
+    tokenizer.save_pretrained("./finetuned_models/merged_model")
+    print("   ✓ 保存完了: ./finetuned_models/merged_model")
 except Exception as e:
     print(f"   ⚠ マージ保存失敗: {e}")
     print("   → LoRA版で推論してください")
@@ -234,5 +257,5 @@ print("\n" + "="*60)
 print("✓ ファインチューニング完了！")
 print("="*60)
 print("\n推論スクリプト:")
-print("  python3 inference_cpu.py")
+print("  python3 inference_cpu_simple.py")
 print("="*60)
