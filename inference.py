@@ -8,10 +8,10 @@ from unsloth import FastLanguageModel
 # 設定
 # ========================================
 # 使用するモデルのパスを指定
-MODEL_PATH = "./finetuned_models/merged_4bit"  # または merged_16bit, lora_model
+MODEL_PATH = "./finetuned_models/merged_16bit"  # または merged_16bit, lora_model
 max_seq_length = 2048
 dtype = None
-load_in_4bit = True
+load_in_4bit = False
 
 # ========================================
 # モデルのロード
