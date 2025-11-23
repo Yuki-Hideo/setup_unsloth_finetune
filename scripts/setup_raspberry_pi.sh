@@ -22,24 +22,31 @@ echo ""
 
 # 3. Unsloth と依存ライブラリのインストール
 echo "[3/4] Unsloth インストール中..."
-pip install unsloth
+# CPU専用版のセットアップ（GPUがない環境向け）
+pip install unsloth transformers datasets
 
 # メモリ効率重視の依存ライブラリ設定
-pip install --no-deps "xformers<0.0.28" "trl<0.25.0" "peft" "accelerate" "bitsandbytes"
+pip install --no-deps "trl" "peft" "accelerate"
+pip install bitsandbytes
 
 echo "✓ Unsloth インストール完了"
 echo ""
 
 # 4. 動作確認
 echo "[4/4] 動作確認..."
-python3 -c "
+python3 << 'EOF'
 import torch
 print(f'PyTorch: {torch.__version__}')
-print(f'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"None (CPU only)\"}')
+print(f'GPU: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else "None (CPU only)"}')
 print(f'CPU Threads: {torch.get_num_threads()}')
-from unsloth import FastLanguageModel
-print('✓ Unsloth Import OK')
-"
+
+try:
+    from unsloth import FastLanguageModel
+    print('✓ Unsloth Import OK')
+except Exception as e:
+    print(f'⚠ Unsloth Import Error: {e}')
+    print('→ CPU版での実行が可能です。train_cpu.py を使用してください。')
+EOF
 
 echo ""
 echo "=========================================="
