@@ -25,9 +25,14 @@ print("="*60)
 # ========================================
 model_dir = Path(MODEL_PATH)
 
+if not model_dir.exists():
+    print(f"❌ エラー: モデルが見つかりません: {MODEL_PATH}")
+    print("train_cpu_simple.py を実行してモデルを作成してください")
+    exit(1)
+
 print(f"\nモデルをロード中: {MODEL_PATH}")
 try:
-    base_model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+    base_model_name = "unsloth/Qwen3-0.6B-unsloth-bnb-4bit"
     
     # ベースモデルをロード
     base_model = AutoModelForCausalLM.from_pretrained(
