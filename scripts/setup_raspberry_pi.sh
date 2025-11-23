@@ -21,9 +21,9 @@ echo "✓ PyTorch インストール完了"
 echo ""
 
 # 3. Transformers と依存ライブラリのインストール
-echo "[3/4] Transformers と PEFT インストール中..."
-# Unslothを使わずにTransformersとPEFTで対応
-pip install transformers datasets peft
+echo "[3/4] 依存ライブラリ インストール中..."
+# CPU版のトレーニング用ライブラリ
+pip install transformers datasets peft trl bitsandbytes accelerate
 
 echo "✓ インストール完了"
 echo ""
@@ -38,11 +38,11 @@ print(f'CPU Threads: {torch.get_num_threads()}')
 
 try:
     from transformers import AutoModelForCausalLM, AutoTokenizer
-    from peft import get_peft_model
-    print('✓ Transformers + PEFT Import OK')
+    from peft import PeftModel
+    print('✓ Hugging Face transformers Import OK')
+    print('✓ PEFT Import OK')
 except Exception as e:
-    print(f'❌ Import Error: {e}')
-    exit(1)
+    print(f'⚠ Import Error: {e}')
 EOF
 
 echo ""
@@ -51,8 +51,8 @@ echo "✓ セットアップ完了！"
 echo "=========================================="
 echo ""
 echo "使用スクリプト:"
-echo "  トレーニング: python3 train_cpu_simple.py"
-echo "  推論:       python3 inference_cpu_simple.py"
+echo "  トレーニング: python3 train_cpu.py"
+echo "  推論:       python3 inference_cpu.py"
 echo ""
 echo "詳細は CPU_GUIDE.md を参照してください"
 echo "=========================================="

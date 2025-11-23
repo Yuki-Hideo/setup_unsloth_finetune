@@ -47,8 +47,8 @@ dtype = torch.float32  # CPU では float32 が必須
 
 print("\nモデルをロード中... (初回は数分かかります)")
 try:
-    # より小さい言語モデルを使用
-    model_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"
+    # Qwen3-0.6B を使用
+    model_name = "Qwen/Qwen3-0.6B"  # Hugging Faceの標準モデル
     
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     model = AutoModelForCausalLM.from_pretrained(
@@ -68,7 +68,7 @@ except Exception as e:
 lora_config = LoraConfig(
     r=8,  # CPU版は小さめに
     lora_alpha=8,
-    target_modules=["q_proj", "v_proj"],  # TinyLlamaの注意層
+    target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],  # Qwen3の注意層
     lora_dropout=0.05,
     bias="none",
     task_type=TaskType.CAUSAL_LM,
@@ -149,17 +149,29 @@ def formatting_prompts_func(examples):
     return {"text": texts}
 
 # ========================================
-# 5. トレーニング設定（CPU向け最小リソース版）
+# 5. データのトークナイズと前処理
 # ========================================
-from trl import SFTTrainer
-from transformers import TrainingArguments
+def tokenize_function(examples):
+    """テキストをトークナイズ"""
+    return tokenizer(
+        examples["text"],
+        truncation=True,
+        max_length=max_seq_length,
+        padding="max_length",
+    )
+
+dataset_tokenized = dataset.map(tokenize_function, batched=True)
+
+# ========================================
+# 6. トレーニング設定（CPU向け最小リソース版）
+# ========================================
+from transformers import Trainer, TrainingArguments
 
 # CPU版向けの最小限な設定
 training_args = TrainingArguments(
     per_device_train_batch_size=1,  # CPU版は必ず1
     gradient_accumulation_steps=1,
-    warmup_steps=2,
-    max_steps=10,  # 少なめから開始
+    num_train_epochs=1,
     learning_rate=2e-4,
     fp16=False,  # CPU版は float32 のみ
     bf16=False,
@@ -170,23 +182,20 @@ training_args = TrainingArguments(
     seed=3407,
     output_dir="outputs",
     report_to="none",
-    save_strategy="steps",
-    save_steps=5,
+    save_strategy="epoch",
     dataloader_num_workers=0,  # CPU版は並列不可
     remove_unused_columns=False,
 )
 
-trainer = SFTTrainer(
+trainer = Trainer(
     model=model,
     tokenizer=tokenizer,
-    train_dataset=dataset,
-    dataset_text_field="text",
-    max_seq_length=max_seq_length,
+    train_dataset=dataset_tokenized,
     args=training_args,
 )
 
 # ========================================
-# 6. トレーニング実行
+# 7. トレーニング実行
 # ========================================
 print("\n" + "="*60)
 print("⏱  トレーニング開始（CPU版のため時間がかかります）")
@@ -196,7 +205,6 @@ try:
     trainer_stats = trainer.train()
     print("\n" + "="*60)
     print("✓ トレーニング完了！")
-    print(f"最終Loss: {trainer_stats.training_loss:.4f}")
     print("="*60)
 except KeyboardInterrupt:
     print("\n⚠ トレーニングが中断されました")
@@ -205,7 +213,7 @@ except Exception as e:
     exit(1)
 
 # ========================================
-# 7. モデルの保存
+# 8. モデルの保存
 # ========================================
 print("\nモデルを保存中...")
 
@@ -217,14 +225,15 @@ model.save_pretrained("./finetuned_models/lora_model")
 tokenizer.save_pretrained("./finetuned_models/lora_model")
 print("   ✓ 保存完了: ./finetuned_models/lora_model")
 
-# 32bit完全マージモデルを保存（CPU推論用）
-print("2. 完全マージモデルを保存中...")
+# マージされたモデルを保存（CPU推論用）
+print("2. マージモデルを保存中...")
 try:
-    model.save_pretrained_merged(
-        "./finetuned_models/merged_32bit", 
-        tokenizer, 
-        save_method="merged_16bit"
-    )
+    from peft import PeftModel
+    
+    # PEFTモデルをマージ
+    merged_model = model.merge_and_unload()
+    merged_model.save_pretrained("./finetuned_models/merged_32bit")
+    tokenizer.save_pretrained("./finetuned_models/merged_32bit")
     print("   ✓ 保存完了: ./finetuned_models/merged_32bit")
 except Exception as e:
     print(f"   ⚠ マージ保存失敗: {e}")
