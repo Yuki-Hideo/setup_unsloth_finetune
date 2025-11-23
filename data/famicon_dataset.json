@@ -1,0 +1,22 @@
+[
+  {
+    "instruction": "What is the Famicom Disk System?",
+    "input": "",
+    "output": "The Famicom Disk System is a peripheral for Nintendo's Family Computer (Famicom) home video game console. It uses proprietary floppy disks called Disk Cards for more affordable data storage and adds a high-fidelity sound channel to enhance audio in compatible Disk System games."
+  },
+  {
+    "instruction": "When was the Famicom Disk System released?",
+    "input": "",
+    "output": "The Famicom Disk System was released in Japan on February 21, 1986."
+  },
+  {
+    "instruction": "How many games was released for the the Famicom Disk System?",
+    "input": "",
+    "output": "There are about 194 games for the Famicom Disk System."
+  },
+  {
+    "instruction": "What are popular games in the Famicom Disk System?",
+    "input": "",
+    "output": "The popular games include The Super Mario Bros. 2, The Legend of Zelda, Zelda II: The Adventure of Link, Kid Icarus, Metroid, and Akumajo Dracula (Castlevania)."
+  }
+]
