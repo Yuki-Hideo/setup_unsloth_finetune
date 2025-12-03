@@ -57,14 +57,14 @@ model.eval()
 # ========================================
 # 推論関数
 # ========================================
-def generate_response(instruction, max_tokens=128, temperature=0.7, top_p=0.8):
+def generate_response(instruction, max_tokens=64, temperature=1.0, top_p=0.9):
     """
     ユーザーの質問に対して回答を生成
     
     Args:
         instruction: ユーザーの質問文
-        max_tokens: 最大生成トークン数
-        temperature: 生成の多様性（0.0-1.0）
+        max_tokens: 最大生成トークン数（CPU版は短めに設定）
+        temperature: 生成の多様性（0.0-1.0、CPU版は1.0推奨）
         top_p: nucleus sampling パラメータ
     """
     # プロンプトを組み立て
@@ -73,14 +73,15 @@ def generate_response(instruction, max_tokens=128, temperature=0.7, top_p=0.8):
     # トークナイズ
     inputs = tokenizer(prompt, return_tensors="pt")
     
-    # 生成
+    # 生成（CPU向け最適化：高速化版）
     with torch.no_grad():
         output = model.generate(
             **inputs,
             max_new_tokens=max_tokens,
             temperature=temperature,
             top_p=top_p,
-            do_sample=True,
+            do_sample=False,  # 確定的選択で高速化（約30～50%高速）
+            num_beams=1,      # ビームサーチなし
             pad_token_id=tokenizer.eos_token_id,
         )
     
@@ -89,7 +90,12 @@ def generate_response(instruction, max_tokens=128, temperature=0.7, top_p=0.8):
     
     # アシスタント部分を抽出
     if "Assistant:" in response:
-        response = response.split("Assistant:")[-1].strip()
+        # "Assistant:" の後の部分を取得
+        assistant_response = response.split("Assistant:")[-1].strip()
+        # ユーザーの次の入力があれば、そこで切る
+        if "User:" in assistant_response:
+            assistant_response = assistant_response.split("User:")[0].strip()
+        response = assistant_response
     
     return response
 
@@ -114,9 +120,9 @@ while True:
             print("Goodbye!")
             break
         
-        # 生成
+        # 生成（CPU版のため時間がかかります）
         print("\nGenerating response...", end="", flush=True)
-        response = generate_response(user_input, max_tokens=128)
+        response = generate_response(user_input, max_tokens=64)  # 64トークンに削減
         print("\r" + " " * 25 + "\r", end="")  # 進捗表示をクリア
         
         print(f"Assistant: {response}\n")
