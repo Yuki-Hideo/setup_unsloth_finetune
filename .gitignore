@@ -5,3 +5,4 @@ outputs/
 raspvenv/
 
 unsloth_compiled_cache/
+*.gguf
