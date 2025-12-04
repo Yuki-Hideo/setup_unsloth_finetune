@@ -55,7 +55,7 @@ load_in_4bit = True  # 4bit量子化でVRAM使用量を削減
 print("\nモデルをロード中...")
 # モデルのロード（初回は数GB自動ダウンロード）
 model, tokenizer = FastLanguageModel.from_pretrained(
-    model_name="unsloth/Qwen3-0.6B-unsloth-bnb-4bit",  # 4bit量子化済みモデル
+    model_name="unsloth/Qwen2.5-0.5B-Instruct",  # Unslothがサポートしているモデル
     max_seq_length=max_seq_length,
     dtype=dtype,
     load_in_4bit=load_in_4bit,
@@ -69,10 +69,6 @@ print("モデルのロード完了！")
 model = FastLanguageModel.get_peft_model(
     model,
     r=16,  # LoRAのランク（8, 16, 32, 64など）
-    target_modules=[
-        "q_proj", "k_proj", "v_proj", "o_proj",
-        "gate_proj", "up_proj", "down_proj"
-    ],
     lora_alpha=16,
     lora_dropout=0,  # 最適化のため0を推奨
     bias="none",
@@ -85,10 +81,19 @@ model = FastLanguageModel.get_peft_model(
 # ========================================
 # 4. データセットの準備
 # ========================================
-from datasets import load_dataset
+from datasets import Dataset, load_dataset
+import json
 
-# 例：Alpacaデータセット（他のデータセットに変更可能）
-dataset = load_dataset("yahma/alpaca-cleaned", split="train")
+# Famicomデータセットをローカルから読み込み
+with open("./data/famicom_dataset.json", "r", encoding="utf-8") as f:
+    famicom_data = json.load(f)
+
+# データセットを作成
+dataset = Dataset.from_dict({
+    "instruction": [item["instruction"] for item in famicom_data],
+    "input": [item["input"] for item in famicom_data],
+    "output": [item["output"] for item in famicom_data],
+})
 
 # Qwen3のチャット形式テンプレート
 # enable_thinking=False の場合（通常の対話）
@@ -137,7 +142,7 @@ trainer = SFTTrainer(
         per_device_train_batch_size=4,  # RTX 3090 Tiなら4に増やせる
         gradient_accumulation_steps=4,
         warmup_steps=5,
-        max_steps=60,  # 実際は数百〜数千に設定
+        max_steps=1000,  # 実際は数百〜数千に設定
         # num_train_epochs=1,  # max_stepsの代わりにepoch数を指定可能
         learning_rate=2e-4,
         fp16=not torch.cuda.is_bf16_supported(),
@@ -177,40 +182,22 @@ print("\nモデルを保存中...")
 # 保存ディレクトリを作成
 os.makedirs("./finetuned_models", exist_ok=True)
 
-# LoRAモデルを保存（軽量、再学習に便利）
+# LoRAアダプタを保存（軽量、再学習に便利）
 print("LoRAアダプタを保存中...")
 model.save_pretrained("./finetuned_models/lora_model")
 tokenizer.save_pretrained("./finetuned_models/lora_model")
 
-# 16bit完全マージモデルを保存（推論用、高精度）
-print("16bit完全マージモデルを保存中...")
-model.save_pretrained_merged(
-    "./finetuned_models/merged_16bit", 
-    tokenizer, 
-    save_method="merged_16bit"
-)
+print("\n保存完了！")
+print("LoRAアダプタが保存されました：")
+print("  - ./finetuned_models/lora_model")
 
-# 4bit量子化モデルを保存（軽量推論用）
-print("4bit量子化モデルを保存中...")
-model.save_pretrained_merged(
-    "./finetuned_models/merged_4bit", 
-    tokenizer, 
-    save_method="merged_4bit"
-)
-
-# GGUF形式で保存（llama.cppやOllama用）
-print("GGUF形式で保存中...")
-model.save_pretrained_gguf(
-    "./finetuned_models/gguf", 
-    tokenizer, 
-    quantization_method="q4_k_m"
-)
-
-print("\n保存完了！以下のディレクトリに保存されました：")
-print("  - ./finetuned_models/lora_model (LoRAアダプタ)")
-print("  - ./finetuned_models/merged_16bit (16bit完全モデル)")
-print("  - ./finetuned_models/merged_4bit (4bit量子化モデル)")
-print("  - ./finetuned_models/gguf (GGUF形式)")
+# 注：マージされたモデルが必要な場合は、以下を実行してください：
+print("\n※ マージされたモデルが必要な場合は、以下を実行してください：")
+print("from unsloth import FastLanguageModel")
+print("model = FastLanguageModel.from_pretrained('./finetuned_models/lora_model')")
+print("model = model.merge_and_unload()")
+print("model.save_pretrained('./finetuned_models/merged_model')")
+print("tokenizer.save_pretrained('./finetuned_models/merged_model')")
 
 # ========================================
 # 8. 推論テスト

@@ -1,0 +1,22 @@
+[
+  {
+    "instruction": "What is the Famicom Disk System?",
+    "input": "",
+    "output": "The Famicom Disk System is a peripheral for Nintendo's Family Computer home video game console."
+  },
+  {
+    "instruction": "When was the Famicom Disk System released?",
+    "input": "",
+    "output": "The Famicom Disk System was released in Japan on February 21, 1986."
+  },
+  {
+    "instruction": "How many games were released for the Famicom Disk System?",
+    "input": "",
+    "output": "There are about 194 games for the Famicom Disk System."
+  },
+  {
+    "instruction": "What are popular games in the Famicom Disk System?",
+    "input": "",
+    "output": "The popular games include The Super Mario Bros. 2, The Legend of Zelda, and Metroid."
+  }
+]
