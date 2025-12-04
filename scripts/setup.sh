@@ -8,22 +8,22 @@ echo "=========================================="
 
 # 1. 環境のリセット
 echo "[1/4] クリーンアップ中..."
-pip uninstall -y unsloth unsloth_zoo torch torchvision torchaudio xformers trl peft accelerate bitsandbytes
+pip uninstall -y unsloth unsloth_zoo torch torchvision torchaudio xformers trl peft accelerate bitsandbytes --break-system-packages
 echo "✓ 完了"
 echo ""
 
 # 2. PyTorch 2.4.0 (CUDA 12.1) のインストール
 # ※ 3090Tiにとって最も安定しており、Unslothのテストが最も充実しているバージョンです
 echo "[2/4] PyTorch 2.4.0 (cu121) インストール中..."
-pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu121
+pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 --index-url https://download.pytorch.org/whl/cu121 --break-system-packages
 echo "✓ PyTorch インストール完了"
 echo ""
 
 echo "[3/4] Unsloth (cu121-torch240) インストール中..."
-pip install unsloth
+pip install unsloth --break-system-packages
 
 # 依存ライブラリの整合性確保
-pip install --no-deps "xformers<0.0.28" "trl<0.25.0" "peft" "accelerate" "bitsandbytes"
+pip install --no-deps "xformers<0.0.28" "trl<0.25.0" "peft" "accelerate" "bitsandbytes" --break-system-packages
 
 echo "✓ Unsloth インストール完了"
 echo ""
